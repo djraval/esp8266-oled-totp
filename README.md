@@ -2,6 +2,14 @@
 
 Hey there! Welcome to my very first ESP8266 project. This little gadget is my solution to a real-world problem: I got tired of constantly pulling out my phone, unlocking it, and squinting at my OKTA 2FA code every time I needed to log in. So, I decided to make my life easier (and hopefully yours too)!
 
+## Demo
+
+Here's a quick demo of the board in action:
+
+![Demo GIF](assets/demo.gif)
+
+This shows the board turning on, connecting to WiFi, and generating a TOTP code.
+
 ## What's This All About?
 
 This project turns an ESP8266 microcontroller with a built-in OLED display into a Time-based One-Time Password (TOTP) generator. It's like having a dedicated 2FA device, but cooler because you made it yourself!

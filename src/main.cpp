@@ -35,6 +35,7 @@ void setupTOTP();
 void updateDisplay(const char* header, const char* body, char hAlign = 'C', char vAlign = 'M');
 void updateTOTP();
 void base32Decode(const char* input, uint8_t* output, int outputLength);
+void drawProgressBar(int percentage);
 
 void setup() {
   Serial.begin(115200);
@@ -58,7 +59,6 @@ void setupDisplay() {
   updateDisplay("Initializing", "Display...");
 }
 
-// Update the setupWiFi function
 void setupWiFi() {
   for (int i = 0; i < WIFI_CREDS_COUNT; i++) {
     char displayMessage[64];
@@ -106,18 +106,63 @@ void setupTOTP() {
   delay(1000);
 }
 
+// Add this function to draw the progress bar
+void drawProgressBar(int percentage) {
+  int barWidth = SCREEN_WIDTH - 4;  // Leave 2 pixels on each side
+  int barHeight = 6;
+  int y = SCREEN_HEIGHT - barHeight - 2;  // Position the bar at the bottom of the screen
+
+  u8g2.drawFrame(2, y, barWidth, barHeight);
+  u8g2.drawBox(2, y, (barWidth * percentage) / 100, barHeight);
+}
+
 void updateTOTP() {
   static char lastTOTPCode[7] = {0};
+  static unsigned long lastUpdateTime = 0;
+  unsigned long currentTime = millis();
   unsigned long epochTime = now();
   
-  char* newTOTPCode = totp.getCode(epochTime);
+  // Calculate seconds within the current 30-second period
+  int secondsInPeriod = epochTime % 30;
   
-  if (strcmp(newTOTPCode, lastTOTPCode) != 0) {
-    Serial.printf("TOTP Code: %s\n", newTOTPCode);
-    updateDisplay("TOTP Code", newTOTPCode);
-    strcpy(lastTOTPCode, newTOTPCode);
+  // Calculate progress percentage
+  int progress = 100 - ((secondsInPeriod * 100) / 30);
+
+  // Update display every second or when the code changes
+  if (currentTime - lastUpdateTime >= 1000 || strcmp(totp.getCode(epochTime), lastTOTPCode) != 0) {
+    lastUpdateTime = currentTime;
+    
+    char* newTOTPCode = totp.getCode(epochTime);
+    
+    if (strcmp(newTOTPCode, lastTOTPCode) != 0) {
+      Serial.printf("TOTP Code: %s\n", newTOTPCode);
+      strcpy(lastTOTPCode, newTOTPCode);
+    }
+
+    // Update display with TOTP code and progress bar
+    u8g2.clearBuffer();
+    
+    // Draw header
+    u8g2.setFont(u8g2_font_7x13B_tr);
+    int16_t headerWidth = u8g2.getStrWidth("TOTP Code");
+    int16_t headerX = (SCREEN_WIDTH - headerWidth) / 2;
+    u8g2.drawStr(headerX, 12, "TOTP Code");
+
+    // Draw TOTP code
+    u8g2.setFont(u8g2_font_inr24_mn); // Larger monospaced font
+    int16_t digitWidth = u8g2.getStrWidth("0");
+    int16_t codeWidth = digitWidth * 6; // 6 digits
+    int16_t codeX = (SCREEN_WIDTH - codeWidth) / 2;
+    int16_t codeY = 45; // Adjust this value to center vertically if needed
+    u8g2.drawStr(codeX, codeY, lastTOTPCode);
+
+    // Draw progress bar
+    drawProgressBar(progress);
+
+    u8g2.sendBuffer();
   }
 }
+
 
 void updateDisplay(const char* header, const char* body, char hAlign, char vAlign) {
   u8g2.clearBuffer();

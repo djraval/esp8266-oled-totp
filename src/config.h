@@ -1,6 +1,14 @@
 // config.h
 #ifndef CONFIG_H
 #define CONFIG_H
+#include <EEPROM.h>
+
+#define EEPROM_SIZE 512
+#define LAST_WIFI_SSID_ADDR 0
+#define LAST_WIFI_PASS_ADDR 64  // Increased from 32 to 64
+
+#define MAX_SSID_LENGTH 32
+#define MAX_PASS_LENGTH 64
 
 // Wi-Fi credentials
 struct WiFiCredentials {

@@ -139,7 +139,7 @@ void saveWiFiCredentials(const char *ssid, const char *password)
 
 void setupTime()
 {
-  showMessage("Syncing", "Time...");
+  showMessage("NTP Sync", "Syncing...");
   setInterval(30);
 
   unsigned long startAttemptTime = millis();
@@ -149,7 +149,7 @@ void setupTime()
     if (millis() - startAttemptTime > NTP_SYNC_TIMEOUT)
     {
       Serial.println("NTP sync failed");
-      showMessage("Error", "NTP sync failed\nRestarting...");
+      showMessage("NTP Sync", "NTP sync failed\nRestarting...");
       delay(2000);
       ESP.restart();
     }
@@ -159,7 +159,7 @@ void setupTime()
     if (WiFi.status() != WL_CONNECTED)
     {
       Serial.println("WiFi disconnected during NTP sync");
-      showMessage("Error", "WiFi disconnected\nRestarting...");
+      showMessage("NTP Sync", "WiFi disconnected\nRestarting...");
       delay(2000);
       ESP.restart();
     }
@@ -168,7 +168,7 @@ void setupTime()
   }
 
   Serial.println("Time synchronized");
-  showMessage("Time", "Synchronized");
+  showMessage("NTP Sync", "Synchronized");
   delay(1000);
 }
 

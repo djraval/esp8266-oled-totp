@@ -75,7 +75,7 @@ const TOTPKey TOTP_KEYS[] = {
     {"OKTA", "YOUR_BASE32_ENCODED_SECRET"},
     {"GITHUB", "ANOTHER_BASE32_ENCODED_SECRET"},
     {"AMAZON", "YET_ANOTHER_BASE32_ENCODED_SECRET"},
-    // Add as many as you need!
+    // Max 4 keys
 };
 ```
 

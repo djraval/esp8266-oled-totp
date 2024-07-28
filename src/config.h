@@ -5,7 +5,7 @@
 
 #define EEPROM_SIZE 512
 #define LAST_WIFI_SSID_ADDR 0
-#define LAST_WIFI_PASS_ADDR 64  // Increased from 32 to 64
+#define LAST_WIFI_PASS_ADDR 64
 
 #define MAX_SSID_LENGTH 32
 #define MAX_PASS_LENGTH 64
@@ -24,7 +24,18 @@ const WiFiCredentials WIFI_CREDS[] = {
 
 const int WIFI_CREDS_COUNT = sizeof(WIFI_CREDS) / sizeof(WIFI_CREDS[0]);
 
-// TOTP Secret Key (Base32 encoded)
-const char *TOTP_SECRET = "YOUR_BASE32_ENCODED_SECRET";
+// TOTP Secret Keys (Base32 encoded)
+struct TOTPKey {
+    const char* label;
+    const char* secret;
+};
+
+const TOTPKey TOTP_KEYS[] = {
+    {"SRVC1", "YOUR_BASE32_ENCODED_SECRET"},
+    {"SRVC2", "YOUR_BASE32_ENCODED_SECRET"},
+    // Add more TOTP keys as needed
+};
+
+const int TOTP_KEYS_COUNT = sizeof(TOTP_KEYS) / sizeof(TOTP_KEYS[0]);
 
 #endif

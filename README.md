@@ -1,6 +1,6 @@
-# ESP8266 OLED TOTP Generator: My First ESP Adventure! 🚀
+# ESP8266 Multi-TOTP Generator: My First ESP Adventure! 🚀
 
-Hey there! Welcome to my very first ESP8266 project. This little gadget is my solution to a real-world problem: I got tired of constantly pulling out my phone, unlocking it, and squinting at my OKTA 2FA code every time I needed to log in. So, I decided to make my life easier (and hopefully yours too)!
+Hey there! Welcome to my very first ESP8266 project. This little gadget is my solution to a real-world problem: I got tired of constantly pulling out my phone, unlocking it, and squinting at multiple 2FA codes every time I needed to log in to different services. So, I decided to make my life easier (and hopefully yours too)!
 
 ## Demo
 
@@ -8,19 +8,20 @@ Here's a quick demo of the board in action:
 
 ![Demo GIF](assets/demo.gif)
 
-This shows the board turning on, connecting to WiFi, and generating a TOTP code.
+This shows the board turning on, connecting to WiFi, and generating multiple TOTP codes simultaneously.
 
 ## What's This All About?
 
-This project turns an ESP8266 microcontroller with a built-in OLED display into a Time-based One-Time Password (TOTP) generator. It's like having a dedicated 2FA device, but cooler because you made it yourself!
+This project turns an ESP8266 microcontroller with a built-in OLED display into a multi-account Time-based One-Time Password (TOTP) generator. It's like having a dedicated 2FA device for all your accounts, but cooler because you made it yourself!
 
 ## Cool Features 😎
 
 - Connects to Wi-Fi (and remembers multiple networks, just in case)
 - Syncs time using NTP (because accuracy is key in the world of TOTP)
-- Generates TOTP codes (the whole point of this project)
+- Generates multiple TOTP codes simultaneously (the whole point of this project)
 - Shows everything on a tiny, yet mighty OLED screen
-- Updates the TOTP code automagically when it changes
+- Updates all TOTP codes automagically when they change
+- Displays a progress bar indicating the time remaining for the current codes
 
 ## The Hardware
 
@@ -45,8 +46,19 @@ I chose this because, well, less soldering = less chance of me messing things up
 
 1. Clone this repo (you're already halfway there!)
 2. Fire up PlatformIO and open this project
-3. Find the `src/config.h` file and put in your Wi-Fi details and TOTP secret key
+3. Find the `src/config.h` file and put in your Wi-Fi details and TOTP secret keys
 4. Hit that upload button and watch the magic happen!
+
+### Note for Linux Users
+
+If you're using Linux, you might need to set up udev rules to allow PlatformIO to communicate with your board. This is a common issue and easy to resolve. Follow these steps:
+
+1. Visit the [PlatformIO udev rules page](https://docs.platformio.org/en/stable/core/installation/udev-rules.html)
+2. Follow the instructions to download and install the udev rules
+3. Restart the udev service or reboot your system
+4. Reconnect your board
+
+This should solve any permission issues you might encounter when trying to upload to your board.
 
 ## Customizing Your Experience
 
@@ -59,7 +71,12 @@ const WiFiCredentials WIFI_CREDS[] = {
     // Add as many as you want!
 };
 
-const char *TOTP_SECRET = "YOUR_BASE32_ENCODED_SECRET";
+const TOTPKey TOTP_KEYS[] = {
+    {"OKTA", "YOUR_BASE32_ENCODED_SECRET"},
+    {"GITHUB", "ANOTHER_BASE32_ENCODED_SECRET"},
+    {"AMAZON", "YET_ANOTHER_BASE32_ENCODED_SECRET"},
+    // Add as many as you need!
+};
 ```
 
 Just fill in your details and you're good to go!
@@ -81,4 +98,4 @@ This project is open source and available under the [MIT License](LICENSE). Use 
 - Big thanks to the brilliant minds behind U8g2lib, ezTime, and TOTP-library. You folks rock!
 - Hats off to the makers of the ESP8266 NodeMCU with integrated OLED display. You saved me from a tangled mess of wires!
 
-Happy TOTPing, folks! 🎉
+Happy Multi-TOTPing, folks! 🎉

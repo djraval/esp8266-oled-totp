@@ -122,7 +122,7 @@ bool scanAndConnectWiFi()
 
   char statusMsg[64];
   Serial.println(String(n) + " WiFi networks in range");
-  snprintf(statusMsg, sizeof(statusMsg), "%d\nWifi networks in range", n);
+  snprintf(statusMsg, sizeof(statusMsg), "%d\nnetworks inrange", n);
 
   for (int i = 0; i < n; i++) {
     Serial.println(WiFi.SSID(i));
@@ -130,10 +130,8 @@ bool scanAndConnectWiFi()
   showMessage("WiFi", statusMsg);
   delay(1000);
 
-  // Create vector of known networks with signal strength
+  // First try known networks
   std::vector<NetworkInfo> knownNetworks;
-  
-  // First, collect all known networks and their signal strengths
   for (int i = 0; i < n; i++) {
     String currentSSID = WiFi.SSID(i);
     for (int j = 0; j < WIFI_CREDS_COUNT; j++) {
@@ -149,43 +147,79 @@ bool scanAndConnectWiFi()
     }
   }
 
-  // Sort networks by signal strength (strongest first)
-  std::sort(knownNetworks.begin(), knownNetworks.end(), 
-    [](const NetworkInfo& a, const NetworkInfo& b) {
-      return a.rssi > b.rssi;
-    });
+  // Sort and try known networks first
+  if (!knownNetworks.empty()) {
+    std::sort(knownNetworks.begin(), knownNetworks.end(), 
+      [](const NetworkInfo& a, const NetworkInfo& b) {
+        return a.rssi > b.rssi;
+      });
 
-  bool connected = false;
+    for (const auto& network : knownNetworks) {
+      char statusMsg[64];
+      snprintf(statusMsg, sizeof(statusMsg), "Trying\n%s\nRSSI: %d dBm", 
+               network.ssid.c_str(), network.rssi);
+      showMessage("WiFi", statusMsg);
+      delay(500);
+      
+      if (connectToWiFi(WIFI_CREDS[network.configIndex].ssid, 
+                        WIFI_CREDS[network.configIndex].password, 1)) {
+        saveWiFiCredentials(WIFI_CREDS[network.configIndex].ssid, 
+                           WIFI_CREDS[network.configIndex].password);
+        WiFi.scanDelete();
+        return true;
+      }
+    }
+  }
+
+  // If no known networks connected, try open networks
+  Serial.println("Trying open networks...");
+  showMessage("WiFi", "Trying open\nnetworks");
   
-  // Try connecting to networks in order of signal strength
-  for (const auto& network : knownNetworks) {
-    snprintf(statusMsg, sizeof(statusMsg), "Trying\n%s\nRSSI: %d dBm", 
-             network.ssid.c_str(), network.rssi);
-    showMessage("WiFi", statusMsg);
-    delay(500);
-    
-    if (connectToWiFi(WIFI_CREDS[network.configIndex].ssid, 
-                      WIFI_CREDS[network.configIndex].password, 1)) {
-      saveWiFiCredentials(WIFI_CREDS[network.configIndex].ssid, 
-                         WIFI_CREDS[network.configIndex].password);
-      connected = true;
-      break;
+  // Sort all networks by signal strength
+  std::vector<NetworkInfo> openNetworks;
+  for (int i = 0; i < n; i++) {
+    if (WiFi.encryptionType(i) == ENC_TYPE_NONE) {
+      NetworkInfo info = {
+        .ssid = WiFi.SSID(i),
+        .rssi = WiFi.RSSI(i),
+        .configIndex = -1  // Not used for open networks
+      };
+      openNetworks.push_back(info);
+    }
+  }
+
+  if (!openNetworks.empty()) {
+    std::sort(openNetworks.begin(), openNetworks.end(),
+      [](const NetworkInfo& a, const NetworkInfo& b) {
+        return a.rssi > b.rssi;
+      });
+
+    for (const auto& network : openNetworks) {
+      char statusMsg[64];
+      snprintf(statusMsg, sizeof(statusMsg), "Trying open\n%s\nRSSI: %d dBm", 
+               network.ssid.c_str(), network.rssi);
+      showMessage("WiFi", statusMsg);
+      delay(500);
+      
+      if (connectToWiFi(network.ssid.c_str(), "", 1)) {
+        saveWiFiCredentials(network.ssid.c_str(), "");
+        WiFi.scanDelete();
+        return true;
+      }
     }
   }
 
   WiFi.scanDelete();
   
-  if (!connected) {
-    Serial.println("No known networks in range");
-    showMessage("WiFi", "No known\nnetworks");
-    // Clear EEPROM
-    for (int i = 0; i < MAX_SSID_LENGTH + MAX_PASS_LENGTH; i++) {
-      EEPROM.write(LAST_WIFI_SSID_ADDR + i, 0);
-    }
-    EEPROM.commit();
+  // If no networks connected, show failure message and clear EEPROM
+  Serial.println("No networks available");
+  showMessage("WiFi", "No networks\navailable");
+  for (int i = 0; i < MAX_SSID_LENGTH + MAX_PASS_LENGTH; i++) {
+    EEPROM.write(LAST_WIFI_SSID_ADDR + i, 0);
   }
+  EEPROM.commit();
   
-  return connected;
+  return false;
 }
 
 bool connectToWiFi(const char *ssid, const char *password, int maxAttempts)

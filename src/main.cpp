@@ -86,18 +86,12 @@ bool isNetworkInConfig(const char* ssid) {
 
 bool scanAndConnectWiFi()
 {
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect(true);  // Disconnect and clear stored credentials
+  delay(100);  // Add small delay after disconnect
+
   showMessage("WiFi", "Scanning...");
   
-  // Set WiFi mode without disconnecting
-  if (WiFi.getMode() != WIFI_STA) {
-    WiFi.mode(WIFI_STA);
-  }
-  
-  // Only disconnect if we're not already disconnected
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFi.disconnect(false);  // false = don't erase stored credentials
-  }
-
   // Start scan with timeout
   unsigned long scanStart = millis();
   int n = WiFi.scanNetworks(true, true); // async scan, include hidden networks
@@ -190,8 +184,14 @@ bool scanAndConnectWiFi()
 
 bool connectToWiFi(const char *ssid, const char *password, int maxAttempts)
 {
+  // Add WiFi disconnect and mode setting before attempting connection
+  WiFi.disconnect(true);  // true = disconnect and clear stored credentials
+  delay(100);  // Add small delay after disconnect
+  WiFi.mode(WIFI_STA);
+  delay(100);  // Add small delay after mode change
+
   // Truncate SSID if too long and ensure it fits on display
-  char ssidTruncated[17] = {0}; // 16 chars + null terminator
+  char ssidTruncated[17] = {0};
   strncpy(ssidTruncated, ssid, 16);
   
   char displayMessage[64];
@@ -201,12 +201,16 @@ bool connectToWiFi(const char *ssid, const char *password, int maxAttempts)
   Serial.printf("Attempting to connect to %s\n", ssid);
   WiFi.begin(ssid, password);
 
-  int timeout = 0;
+  const int CONNECT_DELAY_MS = 100;  // Delay between connection checks
+  const int TIMEOUT_SECONDS = 10;    // Total timeout in seconds
+  const int MAX_ATTEMPTS = (TIMEOUT_SECONDS * 1000) / CONNECT_DELAY_MS;  // Convert to iterations
+  
+  int attempts = 0;
   int dots = 0;
   unsigned long lastDisplayUpdate = 0;
-  const unsigned long DISPLAY_UPDATE_INTERVAL = 250; // Update display every 250ms
+  const unsigned long DISPLAY_UPDATE_INTERVAL = 250;
 
-  while (WiFi.status() != WL_CONNECTED && timeout < 20) // 10 seconds total
+  while (WiFi.status() != WL_CONNECTED && attempts < MAX_ATTEMPTS)
   {
     unsigned long currentMillis = millis();
     if (currentMillis - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL) {
@@ -216,9 +220,9 @@ bool connectToWiFi(const char *ssid, const char *password, int maxAttempts)
       dots = (dots + 1) % 3;
       lastDisplayUpdate = currentMillis;
     }
-    delay(100);  // Shorter delay since we're using millis() for timing
+    delay(CONNECT_DELAY_MS);
     Serial.print(".");
-    timeout++;
+    attempts++;
   }
 
   if (WiFi.status() == WL_CONNECTED)

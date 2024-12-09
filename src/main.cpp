@@ -99,7 +99,7 @@ bool scanAndConnectWiFi()
   delay(100);
 
   showMessage("WiFi", "Scanning...");
-  
+  Serial.println("Scanning for networks...");
   unsigned long scanStart = millis();
   int n = WiFi.scanNetworks(true, true);
   
@@ -121,7 +121,12 @@ bool scanAndConnectWiFi()
   }
 
   char statusMsg[64];
-  snprintf(statusMsg, sizeof(statusMsg), "Found %d\nknown networks", n);
+  Serial.println(String(n) + " WiFi networks in range");
+  snprintf(statusMsg, sizeof(statusMsg), "%d\nWifi networks in range", n);
+
+  for (int i = 0; i < n; i++) {
+    Serial.println(WiFi.SSID(i));
+  }
   showMessage("WiFi", statusMsg);
   delay(1000);
 
@@ -311,10 +316,12 @@ void displayMultiTOTP()
 {
   static unsigned long lastUpdateTime = 0;
   static long lastEpochTime = 0;
+  static long lastTOTPTime = 0;  // Added this to track TOTP period changes
   const unsigned long UPDATE_INTERVAL = 100;
 
   unsigned long currentTime = millis();
   long epochTime = (long)now();
+  long currentTOTPTime = epochTime / 30;  // Integer division to get current TOTP period
 
   if (epochTime != lastEpochTime || currentTime - lastUpdateTime >= UPDATE_INTERVAL)
   {
@@ -370,6 +377,10 @@ void displayMultiTOTP()
       TOTP totp(hmacKey, keyLength);
       char *code = totp.getCode(epochTime);
 
+      if (currentTOTPTime != lastTOTPTime) {  // Only print when TOTP period changes
+        Serial.println(String(TOTP_KEYS[i].label) + " : " + String(code));
+      }
+
       u8g2.setFont(codeFont);
       int codeWidth = u8g2.getStrWidth(code);
       // Adjust Y offset based on grid size
@@ -378,6 +389,10 @@ void displayMultiTOTP()
     }
 
     u8g2.sendBuffer();
+
+    if (currentTOTPTime != lastTOTPTime) {
+      lastTOTPTime = currentTOTPTime;  // Update the last TOTP time 
+    }
   }
 }
 

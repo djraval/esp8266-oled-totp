@@ -6,6 +6,8 @@
 #include <TOTP.h>
 #include <EEPROM.h>
 #include "config.h"
+#include <vector>
+#include <algorithm>
 
 const int SCL_PIN = 12;
 const int SDA_PIN = 14;
@@ -26,6 +28,12 @@ void displayMultiTOTP();
 int base32Decode(const char *input, uint8_t *output, int outputLength);
 void showMessage(const char *header, const char *body);
 bool scanAndConnectWiFi();
+
+struct NetworkInfo {
+    String ssid;
+    int32_t rssi;
+    int configIndex;  // Index in WIFI_CREDS array
+};
 
 // Helper function to abbreviate service names
 void abbreviateServiceName(const char* input, char* output, size_t maxLength) {
@@ -72,7 +80,7 @@ void setupDisplay()
   u8g2.begin();
   u8g2.setPowerSave(0);  // Ensure display is always on
   u8g2.setContrast(255); // Maximum contrast
-  showMessage("Initializing", "Display...");
+  // showMessage("Initializing", "Display...");
 }
 
 bool isNetworkInConfig(const char* ssid) {
@@ -87,19 +95,17 @@ bool isNetworkInConfig(const char* ssid) {
 bool scanAndConnectWiFi()
 {
   WiFi.mode(WIFI_STA);
-  WiFi.disconnect(true);  // Disconnect and clear stored credentials
-  delay(100);  // Add small delay after disconnect
+  WiFi.disconnect(true);
+  delay(100);
 
   showMessage("WiFi", "Scanning...");
   
-  // Start scan with timeout
   unsigned long scanStart = millis();
-  int n = WiFi.scanNetworks(true, true); // async scan, include hidden networks
+  int n = WiFi.scanNetworks(true, true);
   
-  // Wait for scan results with timeout
   int dots = 0;
   char scanMsg[32];
-  while (n == WIFI_SCAN_RUNNING && millis() - scanStart < 10000) { // 10 second timeout
+  while (n == WIFI_SCAN_RUNNING && millis() - scanStart < 10000) {
     snprintf(scanMsg, sizeof(scanMsg), "Scanning%.*s", dots + 1, "...");
     showMessage("WiFi", scanMsg);
     dots = (dots + 1) % 3;
@@ -110,69 +116,64 @@ bool scanAndConnectWiFi()
   if (n == WIFI_SCAN_FAILED || n == 0) {
     Serial.println("No networks found or scan failed");
     showMessage("WiFi", "No networks\nfound");
-    WiFi.scanDelete(); // Clean up
+    WiFi.scanDelete();
     return false;
   }
 
   char statusMsg[64];
-  snprintf(statusMsg, sizeof(statusMsg), "Found %d\nnetworks", n);
+  snprintf(statusMsg, sizeof(statusMsg), "Found %d\nknown networks", n);
   showMessage("WiFi", statusMsg);
   delay(1000);
 
-  // Read last successful credentials from EEPROM
-  char lastSSID[MAX_SSID_LENGTH + 1] = {0};
-  char lastPass[MAX_PASS_LENGTH + 1] = {0};
-  for (int i = 0; i < MAX_SSID_LENGTH; i++) {
-    lastSSID[i] = EEPROM.read(LAST_WIFI_SSID_ADDR + i);
-  }
-  for (int i = 0; i < MAX_PASS_LENGTH; i++) {
-    lastPass[i] = EEPROM.read(LAST_WIFI_PASS_ADDR + i);
-  }
-  lastSSID[MAX_SSID_LENGTH] = '\0';
-  lastPass[MAX_PASS_LENGTH] = '\0';
-
-  bool connected = false;
-
-  // First try last successful network if it's in range AND still in config
-  if (strlen(lastSSID) > 0 && isNetworkInConfig(lastSSID)) {
-    for (int i = 0; i < n && !connected; i++) {
-      if (strcmp(WiFi.SSID(i).c_str(), lastSSID) == 0) {
-        snprintf(statusMsg, sizeof(statusMsg), "Found last\nused network");
-        showMessage("WiFi", statusMsg);
-        delay(500);
-        connected = connectToWiFi(lastSSID, lastPass, 1);
+  // Create vector of known networks with signal strength
+  std::vector<NetworkInfo> knownNetworks;
+  
+  // First, collect all known networks and their signal strengths
+  for (int i = 0; i < n; i++) {
+    String currentSSID = WiFi.SSID(i);
+    for (int j = 0; j < WIFI_CREDS_COUNT; j++) {
+      if (currentSSID.equals(WIFI_CREDS[j].ssid)) {
+        NetworkInfo info = {
+          .ssid = currentSSID,
+          .rssi = WiFi.RSSI(i),
+          .configIndex = j
+        };
+        knownNetworks.push_back(info);
         break;
       }
     }
   }
 
-  // Try known networks that are in range
-  if (!connected) {
-    int networksFound = 0;
-    for (int i = 0; i < n && !connected; i++) {
-      String ssid = WiFi.SSID(i);
-      for (int j = 0; j < WIFI_CREDS_COUNT; j++) {
-        if (ssid.equals(WIFI_CREDS[j].ssid)) {
-          networksFound++;
-          snprintf(statusMsg, sizeof(statusMsg), "Found known\nnetwork %d/%d", networksFound, WIFI_CREDS_COUNT);
-          showMessage("WiFi", statusMsg);
-          delay(500);
-          if (connectToWiFi(WIFI_CREDS[j].ssid, WIFI_CREDS[j].password, 1)) {
-            saveWiFiCredentials(WIFI_CREDS[j].ssid, WIFI_CREDS[j].password);
-            connected = true;
-          }
-          break;
-        }
-      }
+  // Sort networks by signal strength (strongest first)
+  std::sort(knownNetworks.begin(), knownNetworks.end(), 
+    [](const NetworkInfo& a, const NetworkInfo& b) {
+      return a.rssi > b.rssi;
+    });
+
+  bool connected = false;
+  
+  // Try connecting to networks in order of signal strength
+  for (const auto& network : knownNetworks) {
+    snprintf(statusMsg, sizeof(statusMsg), "Trying\n%s\nRSSI: %d dBm", 
+             network.ssid.c_str(), network.rssi);
+    showMessage("WiFi", statusMsg);
+    delay(500);
+    
+    if (connectToWiFi(WIFI_CREDS[network.configIndex].ssid, 
+                      WIFI_CREDS[network.configIndex].password, 1)) {
+      saveWiFiCredentials(WIFI_CREDS[network.configIndex].ssid, 
+                         WIFI_CREDS[network.configIndex].password);
+      connected = true;
+      break;
     }
   }
 
-  WiFi.scanDelete(); // Clean up scan results
+  WiFi.scanDelete();
   
   if (!connected) {
     Serial.println("No known networks in range");
     showMessage("WiFi", "No known\nnetworks");
-    // Clear EEPROM if we couldn't connect to any network
+    // Clear EEPROM
     for (int i = 0; i < MAX_SSID_LENGTH + MAX_PASS_LENGTH; i++) {
       EEPROM.write(LAST_WIFI_SSID_ADDR + i, 0);
     }

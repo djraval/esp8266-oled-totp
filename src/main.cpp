@@ -9,13 +9,19 @@
 #include <vector>
 #include <algorithm>
 
-const int SCL_PIN = 12;
-const int SDA_PIN = 14;
+const int SCL_PIN = 12; //(D5/GPIO12)
+const int SDA_PIN = 14; //(D6/GPIO14) 
 const int SCREEN_WIDTH = 128;
 const int SCREEN_HEIGHT = 64;
 const int YELLOW_SECTION_HEIGHT = 16;
 const unsigned long NTP_SYNC_TIMEOUT = 30000; // 30 seconds timeout for NTP sync
 
+// Possible future use for a button
+const int FLASH_BTN_PIN = 0;
+unsigned long lastBtnPress = 0;
+const unsigned long FLASH_BUTTON_DEBOUNCE_DELAY = 200;
+
+//OLED display 128x64 with SSD-1306 driver
 U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, SCL_PIN, SDA_PIN, U8X8_PIN_NONE);
 
 // Forward declarations

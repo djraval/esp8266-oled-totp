@@ -1,6 +1,5 @@
+// ===== Include Section =====
 #include <Arduino.h>
-#include <U8g2lib.h>
-#include <Wire.h>
 #include <ESP8266WiFi.h>
 #include <ezTime.h>
 #include <TOTP.h>
@@ -8,38 +7,41 @@
 #include "config.h"
 #include <vector>
 #include <algorithm>
+#include <Display.h>
 
-const int SCL_PIN = 12; //(D5/GPIO12)
-const int SDA_PIN = 14; //(D6/GPIO14) 
-const int SCREEN_WIDTH = 128;
-const int SCREEN_HEIGHT = 64;
-const int YELLOW_SECTION_HEIGHT = 16;
-const unsigned long NTP_SYNC_TIMEOUT = 30000; // 30 seconds timeout for NTP sync
-
-// Possible future use for a button
+// ===== Pin Definitions =====
 const int FLASH_BTN_PIN = 0;
-unsigned long lastBtnPress = 0;
+
+// ===== Timing Constants =====
+const unsigned long NTP_SYNC_TIMEOUT = 30000;           // 30 seconds timeout for NTP sync
 const unsigned long FLASH_BUTTON_DEBOUNCE_DELAY = 200;
+unsigned long lastBtnPress = 0;
 
-//OLED display 128x64 with SSD-1306 driver
-U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, SCL_PIN, SDA_PIN, U8X8_PIN_NONE);
-
-// Forward declarations
-void setupDisplay();
-bool connectToWiFi(const char *ssid, const char *password, int maxAttempts);
-void saveWiFiCredentials(const char *ssid, const char *password);
-void setupWiFi();
-void setupTime();
-void displayMultiTOTP();
-int base32Decode(const char *input, uint8_t *output, int outputLength);
-void showMessage(const char *header, const char *body);
-bool scanAndConnectWiFi();
-
+// ===== Data Structures =====
 struct NetworkInfo {
     String ssid;
     int32_t rssi;
     int configIndex;  // Index in WIFI_CREDS array
 };
+
+// ===== Function Declarations =====
+// Display Functions
+void displayMultiTOTP();
+
+// WiFi Functions
+void setupWiFi();
+bool scanAndConnectWiFi();
+bool connectToWiFi(const char *ssid, const char *password, int maxAttempts);
+void saveWiFiCredentials(const char *ssid, const char *password);
+bool isNetworkInConfig(const char* ssid);
+
+// Time Functions
+void setupTime();
+
+// Utility Functions
+void abbreviateServiceName(const char* input, char* output, size_t maxLength);
+int base32Decode(const char *input, uint8_t *output, int outputLength);
+void updateOTPCodes(OTPEntry* entries, long epochTime);
 
 // Helper function to abbreviate service names
 void abbreviateServiceName(const char* input, char* output, size_t maxLength) {
@@ -80,15 +82,6 @@ void loop()
   displayMultiTOTP();
 }
 
-void setupDisplay()
-{
-  Wire.setClock(400000);  // Set I2C to fast mode (400kHz)
-  u8g2.begin();
-  u8g2.setPowerSave(0);  // Ensure display is always on
-  u8g2.setContrast(255); // Maximum contrast
-  // showMessage("Initializing", "Display...");
-}
-
 bool isNetworkInConfig(const char* ssid) {
   for (int i = 0; i < WIFI_CREDS_COUNT; i++) {
     if (strcmp(WIFI_CREDS[i].ssid, ssid) == 0) {
@@ -108,7 +101,7 @@ bool scanAndConnectWiFi()
   Serial.println("Scanning for networks...");
   unsigned long scanStart = millis();
   int n = WiFi.scanNetworks(true, true);
-  
+
   int dots = 0;
   char scanMsg[32];
   while (n == WIFI_SCAN_RUNNING && millis() - scanStart < 10000) {
@@ -155,21 +148,21 @@ bool scanAndConnectWiFi()
 
   // Sort and try known networks first
   if (!knownNetworks.empty()) {
-    std::sort(knownNetworks.begin(), knownNetworks.end(), 
+    std::sort(knownNetworks.begin(), knownNetworks.end(),
       [](const NetworkInfo& a, const NetworkInfo& b) {
         return a.rssi > b.rssi;
       });
 
     for (const auto& network : knownNetworks) {
       char statusMsg[64];
-      snprintf(statusMsg, sizeof(statusMsg), "Trying\n%s\nRSSI: %d dBm", 
+      snprintf(statusMsg, sizeof(statusMsg), "Trying\n%s\nRSSI: %d dBm",
                network.ssid.c_str(), network.rssi);
       showMessage("WiFi", statusMsg);
       delay(500);
-      
-      if (connectToWiFi(WIFI_CREDS[network.configIndex].ssid, 
+
+      if (connectToWiFi(WIFI_CREDS[network.configIndex].ssid,
                         WIFI_CREDS[network.configIndex].password, 1)) {
-        saveWiFiCredentials(WIFI_CREDS[network.configIndex].ssid, 
+        saveWiFiCredentials(WIFI_CREDS[network.configIndex].ssid,
                            WIFI_CREDS[network.configIndex].password);
         WiFi.scanDelete();
         return true;
@@ -180,7 +173,7 @@ bool scanAndConnectWiFi()
   // If no known networks connected, try open networks
   Serial.println("Trying open networks...");
   showMessage("WiFi", "Trying open\nnetworks");
-  
+
   // Sort all networks by signal strength
   std::vector<NetworkInfo> openNetworks;
   for (int i = 0; i < n; i++) {
@@ -202,11 +195,11 @@ bool scanAndConnectWiFi()
 
     for (const auto& network : openNetworks) {
       char statusMsg[64];
-      snprintf(statusMsg, sizeof(statusMsg), "Trying open\n%s\nRSSI: %d dBm", 
+      snprintf(statusMsg, sizeof(statusMsg), "Trying open\n%s\nRSSI: %d dBm",
                network.ssid.c_str(), network.rssi);
       showMessage("WiFi", statusMsg);
       delay(500);
-      
+
       if (connectToWiFi(network.ssid.c_str(), "", 1)) {
         saveWiFiCredentials(network.ssid.c_str(), "");
         WiFi.scanDelete();
@@ -216,7 +209,7 @@ bool scanAndConnectWiFi()
   }
 
   WiFi.scanDelete();
-  
+
   // If no networks connected, show failure message and clear EEPROM
   Serial.println("No networks available");
   showMessage("WiFi", "No networks\navailable");
@@ -224,7 +217,7 @@ bool scanAndConnectWiFi()
     EEPROM.write(LAST_WIFI_SSID_ADDR + i, 0);
   }
   EEPROM.commit();
-  
+
   return false;
 }
 
@@ -239,7 +232,7 @@ bool connectToWiFi(const char *ssid, const char *password, int maxAttempts)
   // Truncate SSID if too long and ensure it fits on display
   char ssidTruncated[17] = {0};
   strncpy(ssidTruncated, ssid, 16);
-  
+
   char displayMessage[64];
   snprintf(displayMessage, sizeof(displayMessage), "Connecting to\n%s", ssidTruncated);
   showMessage("WiFi", displayMessage);
@@ -250,7 +243,7 @@ bool connectToWiFi(const char *ssid, const char *password, int maxAttempts)
   const int CONNECT_DELAY_MS = 100;  // Delay between connection checks
   const int TIMEOUT_SECONDS = 10;    // Total timeout in seconds
   const int MAX_ATTEMPTS = (TIMEOUT_SECONDS * 1000) / CONNECT_DELAY_MS;  // Convert to iterations
-  
+
   int attempts = 0;
   int dots = 0;
   unsigned long lastDisplayUpdate = 0;
@@ -260,7 +253,7 @@ bool connectToWiFi(const char *ssid, const char *password, int maxAttempts)
   {
     unsigned long currentMillis = millis();
     if (currentMillis - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL) {
-      snprintf(displayMessage, sizeof(displayMessage), "Connecting to\n%s%.*s", 
+      snprintf(displayMessage, sizeof(displayMessage), "Connecting to\n%s%.*s",
                ssidTruncated, dots + 1, "...");
       showMessage("WiFi", displayMessage);
       dots = (dots + 1) % 3;
@@ -291,7 +284,7 @@ bool connectToWiFi(const char *ssid, const char *password, int maxAttempts)
 void setupWiFi()
 {
   EEPROM.begin(EEPROM_SIZE);
-  
+
   // Try scanning and connecting to available networks
   if (scanAndConnectWiFi()) {
     return;
@@ -352,87 +345,57 @@ void setupTime()
   delay(1000);
 }
 
-void displayMultiTOTP()
-{
-  static unsigned long lastUpdateTime = 0;
-  static long lastEpochTime = 0;
-  static long lastTOTPTime = 0;  // Added this to track TOTP period changes
-  const unsigned long UPDATE_INTERVAL = 100;
+void updateOTPCodes(OTPEntry* entries, long epochTime) {
+  for (int i = 0; i < TOTP_KEYS_COUNT; i++) {
+      // Abbreviate service name
+      abbreviateServiceName(TOTP_KEYS[i].label, 
+                          entries[i].abbreviatedLabel, 
+                          (TOTP_KEYS_COUNT <= 4) ? 9 : 6);
 
-  unsigned long currentTime = millis();
-  long epochTime = (long)now();
-  long currentTOTPTime = epochTime / 30;  // Integer division to get current TOTP period
-
-  if (epochTime != lastEpochTime || currentTime - lastUpdateTime >= UPDATE_INTERVAL)
-  {
-    lastUpdateTime = currentTime;
-    lastEpochTime = epochTime;
-
-    u8g2.clearBuffer();
-
-    const int TOTP_PERIOD = 30;
-    int secondsElapsed = epochTime % TOTP_PERIOD;
-    int progressPercentage = 100 - ((secondsElapsed * 100) / TOTP_PERIOD);
-
-    const int PROGRESS_BAR_WIDTH = 120;
-    const int PROGRESS_BAR_HEIGHT = 8;
-    const int PROGRESS_BAR_X = (SCREEN_WIDTH - PROGRESS_BAR_WIDTH) / 2;
-    const int PROGRESS_BAR_Y = (YELLOW_SECTION_HEIGHT - PROGRESS_BAR_HEIGHT) / 2;
-
-    u8g2.drawFrame(PROGRESS_BAR_X, PROGRESS_BAR_Y, PROGRESS_BAR_WIDTH, PROGRESS_BAR_HEIGHT);
-
-    int fillWidth = (PROGRESS_BAR_WIDTH * progressPercentage) / 100;
-    u8g2.drawBox(PROGRESS_BAR_X, PROGRESS_BAR_Y, fillWidth, PROGRESS_BAR_HEIGHT);
-
-    // Determine grid layout based on number of TOTPs
-    const int COLS = (TOTP_KEYS_COUNT <= 4) ? 2 : 3;
-    const int ROWS = (TOTP_KEYS_COUNT <= 4) ? 2 : 2;
-    const int CELL_WIDTH = SCREEN_WIDTH / COLS;
-    const int CELL_HEIGHT = (SCREEN_HEIGHT - YELLOW_SECTION_HEIGHT) / ROWS;
-    
-    // Select font sizes based on number of TOTPs
-    const uint8_t* labelFont = (TOTP_KEYS_COUNT <= 4) ? u8g2_font_6x10_tr : u8g2_font_5x7_tr;
-    const uint8_t* codeFont = (TOTP_KEYS_COUNT <= 4) ? u8g2_font_profont17_tn : u8g2_font_profont11_tn;
-    
-    int startY = YELLOW_SECTION_HEIGHT + CELL_HEIGHT / 2;
-
-    for (int i = 0; i < TOTP_KEYS_COUNT; i++)
-    {
-      int row = i / COLS;
-      int col = i % COLS;
-
-      int x = col * CELL_WIDTH;
-      int y = startY + row * CELL_HEIGHT;
-
-      u8g2.setFont(labelFont);
-      char abbreviatedLabel[10]; // 9 chars + null terminator
-      // Use 9 chars for 2x2 grid, 6 chars for 3x2 grid
-      size_t maxLength = (TOTP_KEYS_COUNT <= 4) ? 9 : 6;
-      abbreviateServiceName(TOTP_KEYS[i].label, abbreviatedLabel, maxLength);
-      int labelWidth = u8g2.getStrWidth(abbreviatedLabel);
-      u8g2.drawStr(x + (CELL_WIDTH - labelWidth) / 2, y - 2, abbreviatedLabel);
-
+      // Generate TOTP code
       uint8_t hmacKey[32];
       int keyLength = base32Decode(TOTP_KEYS[i].secret, hmacKey, sizeof(hmacKey));
       TOTP totp(hmacKey, keyLength);
-      char *code = totp.getCode(epochTime);
+      char* code = totp.getCode(epochTime);
+      
+      // Copy code to entry
+      strncpy(entries[i].code, code, 6);
+      entries[i].code[6] = '\0';
+  }
+}
 
-      if (currentTOTPTime != lastTOTPTime) {  // Only print when TOTP period changes
-        Serial.println(String(TOTP_KEYS[i].label) + " : " + String(code));
+
+void displayMultiTOTP() {
+  static unsigned long lastUpdateTime = 0;
+  static long lastEpochTime = 0;
+  static long lastTOTPTime = 0;
+  static OTPEntry otpEntries[6]; // Max 6 TOTP keys for display
+  static DisplayState displayState = {
+      .progressPercentage = 0,
+      .totalItems = TOTP_KEYS_COUNT,
+      .entries = otpEntries
+  };
+
+  const unsigned long UPDATE_INTERVAL = 100;
+  unsigned long currentTime = millis();
+  long epochTime = (long)now();
+  long currentTOTPTime = epochTime / 30;
+
+  if (epochTime != lastEpochTime || currentTime - lastUpdateTime >= UPDATE_INTERVAL) {
+      lastUpdateTime = currentTime;
+      lastEpochTime = epochTime;
+
+      // Update OTP codes if period changed
+      if (currentTOTPTime != lastTOTPTime) {
+          updateOTPCodes(otpEntries, epochTime);
+          lastTOTPTime = currentTOTPTime;
       }
 
-      u8g2.setFont(codeFont);
-      int codeWidth = u8g2.getStrWidth(code);
-      // Adjust Y offset based on grid size
-      int yOffset = (TOTP_KEYS_COUNT <= 4) ? 12 : 10;
-      u8g2.drawStr(x + (CELL_WIDTH - codeWidth) / 2, y + yOffset, code);
-    }
+      // Update progress percentage
+      displayState.progressPercentage = 100 - ((epochTime % 30) * 100) / 30;
 
-    u8g2.sendBuffer();
-
-    if (currentTOTPTime != lastTOTPTime) {
-      lastTOTPTime = currentTOTPTime;  // Update the last TOTP time 
-    }
+      // Render display
+      renderOTPDisplay(displayState);
   }
 }
 
@@ -463,54 +426,4 @@ int base32Decode(const char *input, uint8_t *output, int outputLength)
     }
   }
   return count;
-}
-
-void showMessage(const char *header, const char *body)
-{
-  static char lastHeader[32] = "";
-  static char lastBody[64] = "";
-  
-  // Only clear and redraw if the message has changed
-  if (strcmp(lastHeader, header) != 0 || strcmp(lastBody, body) != 0) {
-    strncpy(lastHeader, header, sizeof(lastHeader) - 1);
-    strncpy(lastBody, body, sizeof(lastBody) - 1);
-    lastHeader[sizeof(lastHeader) - 1] = '\0';
-    lastBody[sizeof(lastBody) - 1] = '\0';
-    
-    u8g2.clearBuffer();
-
-    u8g2.setFont(u8g2_font_7x13B_tr);
-    int16_t headerWidth = u8g2.getStrWidth(header);
-    int16_t headerX = (SCREEN_WIDTH - headerWidth) / 2;
-    u8g2.drawStr(headerX, 12, header);
-
-    int bodyLength = strlen(body);
-    const int MAX_LINES = 3;
-    char *lines[MAX_LINES];
-    int lineCount = 0;
-
-    char *bodyTemp = strdup(body);
-    char *token = strtok(bodyTemp, "\n");
-    while (token != NULL && lineCount < MAX_LINES)
-    {
-      lines[lineCount++] = token;
-      token = strtok(NULL, "\n");
-    }
-
-    u8g2.setFont(lineCount == 1 && bodyLength <= 6 ? u8g2_font_10x20_tf : u8g2_font_7x13_tf);
-
-    int16_t lineHeight = (u8g2.getMaxCharHeight() > 13) ? 20 : 13;
-    int16_t totalTextHeight = lineCount * lineHeight;
-    int16_t startY = YELLOW_SECTION_HEIGHT + ((SCREEN_HEIGHT - YELLOW_SECTION_HEIGHT - totalTextHeight) / 2) + lineHeight;
-
-    for (int i = 0; i < lineCount; i++)
-    {
-      int16_t lineWidth = u8g2.getStrWidth(lines[i]);
-      int16_t lineX = (SCREEN_WIDTH - lineWidth) / 2;
-      u8g2.drawStr(lineX, startY + (i * lineHeight), lines[i]);
-    }
-
-    u8g2.sendBuffer();
-    free(bodyTemp);
-  }
 }
